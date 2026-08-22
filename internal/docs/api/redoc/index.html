@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>API Docs - Redoc</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+  <div id="redoc"></div>
+  <script src="https://unpkg.com/redoc@2/bundles/redoc.standalone.js"></script>
+  <script>
+    Redoc.init("/docs/openapi.yaml", { theme: { colors: { primary: { main: "#3b82f6" } } } }, document.getElementById("redoc"));
+  </script>
+</body>
+</html>

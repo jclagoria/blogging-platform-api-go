@@ -1,0 +1,317 @@
+openapi: 3.1.0
+info:
+  title: Blogging Platform API
+  description: RESTful API for a personal blogging platform with CRUD operations on blog posts.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /health:
+    get:
+      operationId: HealthCheck
+      summary: Health check
+      description: Returns the health status of the API.
+      tags:
+        - health
+      responses:
+        "200":
+          description: API is running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /posts:
+    get:
+      operationId: ListPosts
+      summary: List all posts
+      description: Returns all blog posts, optionally filtered by search term.
+      tags:
+        - posts
+      parameters:
+        - name: term
+          in: query
+          description: Search filter — matches against title, content, and category
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Post"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      operationId: CreatePost
+      summary: Create a blog post
+      description: Creates a new blog post with the provided data.
+      tags:
+        - posts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePostRequest"
+      responses:
+        "201":
+          description: Post created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /posts/{id}:
+    get:
+      operationId: GetPost
+      summary: Get a blog post
+      description: Returns a single blog post by its ID.
+      tags:
+        - posts
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      responses:
+        "200":
+          description: Post found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    put:
+      operationId: UpdatePost
+      summary: Update a blog post
+      description: Replaces a blog post with the provided data.
+      tags:
+        - posts
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePostRequest"
+      responses:
+        "200":
+          description: Post updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    delete:
+      operationId: DeletePost
+      summary: Delete a blog post
+      description: Deletes a blog post by its ID.
+      tags:
+        - posts
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      responses:
+        "204":
+          description: Post deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  parameters:
+    PostId:
+      name: id
+      in: path
+      required: true
+      description: Post identifier
+      schema:
+        type: integer
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: ok
+
+    Post:
+      type: object
+      required:
+        - id
+        - title
+        - content
+        - category
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        content:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreatePostRequest:
+      type: object
+      required:
+        - title
+        - content
+        - category
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    UpdatePostRequest:
+      type: object
+      required:
+        - title
+        - content
+        - category
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    ProblemDetails:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Problem type URI
+        title:
+          type: string
+          description: Short human-readable summary
+        status:
+          type: integer
+          description: HTTP status code
+        detail:
+          type: string
+          description: Human-readable explanation
+        errors:
+          type: array
+          description: Validation errors (only for 422)
+          items:
+            $ref: "#/components/schemas/ValidationErrorDetail"
+
+    ValidationErrorDetail:
+      type: object
+      required:
+        - field
+        - message
+        - code
+      properties:
+        field:
+          type: string
+          description: Name of the field that failed validation
+        message:
+          type: string
+          description: Human-readable error description
+        code:
+          type: string
+          description: Error code
+          enum:
+            - REQUIRED
+            - INVALID_FORMAT
+            - TOO_SHORT
+            - TOO_LONG
+            - TOO_SMALL
+            - TOO_LARGE
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: "/problems/not-found"
+            title: "Not Found"
+            status: 404
+            detail: "The requested resource was not found"
+
+    ValidationError:
+      description: Validation failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: "/problems/validation-error"
+            title: "Validation Error"
+            status: 422
+            detail: "Request body failed validation"
+            errors:
+              - field: title
+                message: "title is required"
+                code: REQUIRED
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: "/problems/internal-error"
+            title: "Internal Server Error"
+            status: 500
+            detail: "An unexpected error occurred"
