@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,16 +13,20 @@ import (
 // InMemoryPostStore is a PostStore backed by an in-memory map.
 // ponytail: in-memory store for dev/test, swap for MongoDB in production
 type InMemoryPostStore struct {
-	mu      sync.RWMutex
-	posts   map[int]*generated.Post
-	nextID  int
+	mu    sync.RWMutex
+	posts map[string]*generated.Post
 }
 
 func NewInMemoryPostStore() *InMemoryPostStore {
 	return &InMemoryPostStore{
-		posts:  make(map[int]*generated.Post),
-		nextID: 1,
+		posts: make(map[string]*generated.Post),
 	}
+}
+
+func generateID() string {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }
 
 func (s *InMemoryPostStore) CreatePost(title, content, category string, tags []string) (*generated.Post, error) {
@@ -29,8 +34,9 @@ func (s *InMemoryPostStore) CreatePost(title, content, category string, tags []s
 	defer s.mu.Unlock()
 
 	now := time.Now().UTC()
+	id := generateID()
 	post := &generated.Post{
-		Id:        s.nextID,
+		Id:        id,
 		Title:     title,
 		Content:   content,
 		Category:  category,
@@ -38,19 +44,18 @@ func (s *InMemoryPostStore) CreatePost(title, content, category string, tags []s
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	s.posts[s.nextID] = post
-	s.nextID++
+	s.posts[id] = post
 
 	return post, nil
 }
 
-func (s *InMemoryPostStore) GetPost(id int) (*generated.Post, error) {
+func (s *InMemoryPostStore) GetPost(id string) (*generated.Post, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	post, ok := s.posts[id]
 	if !ok {
-		return nil, fmt.Errorf("post %d not found", id)
+		return nil, fmt.Errorf("post %s not found", id)
 	}
 	return post, nil
 }
@@ -68,13 +73,13 @@ func (s *InMemoryPostStore) ListPosts(term string) ([]generated.Post, error) {
 	return result, nil
 }
 
-func (s *InMemoryPostStore) UpdatePost(id int, title, content, category string, tags []string) (*generated.Post, error) {
+func (s *InMemoryPostStore) UpdatePost(id string, title, content, category string, tags []string) (*generated.Post, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	post, ok := s.posts[id]
 	if !ok {
-		return nil, fmt.Errorf("post %d not found", id)
+		return nil, fmt.Errorf("post %s not found", id)
 	}
 
 	post.Title = title
@@ -86,12 +91,12 @@ func (s *InMemoryPostStore) UpdatePost(id int, title, content, category string, 
 	return post, nil
 }
 
-func (s *InMemoryPostStore) DeletePost(id int) error {
+func (s *InMemoryPostStore) DeletePost(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, ok := s.posts[id]; !ok {
-		return fmt.Errorf("post %d not found", id)
+		return fmt.Errorf("post %s not found", id)
 	}
 	delete(s.posts, id)
 	return nil

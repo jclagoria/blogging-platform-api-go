@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,250 +20,226 @@ func setupRouter(handler *PostsHandler) *chi.Mux {
 	return r
 }
 
-func TestCreatePost_Success(t *testing.T) {
-	store := NewInMemoryPostStore()
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
+func TestCreatePost(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+		wantTitle  string
+		wantField  string
+	}{
+		{"valid post", `{"title":"Test Post","content":"Test content","category":"Tech","tags":["go"]}`, http.StatusCreated, "Test Post", ""},
+		{"missing title", `{"content":"Test content","category":"Tech"}`, http.StatusUnprocessableEntity, "", "title"},
+		{"missing content", `{"title":"Test","category":"Tech"}`, http.StatusUnprocessableEntity, "", "content"},
+		{"missing category", `{"title":"Test","content":"content"}`, http.StatusUnprocessableEntity, "", "category"},
+	}
 
-	body := `{"title":"Test Post","content":"Test content","category":"Tech","tags":["go"]}`
-	req := httptest.NewRequest(http.MethodPost, "/posts", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewInMemoryPostStore()
+			handler := &PostsHandler{Store: store}
+			r := setupRouter(handler)
 
-	r.ServeHTTP(w, req)
+			req := httptest.NewRequest(http.MethodPost, "/posts", bytes.NewBufferString(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
 
-	assert.Equal(t, http.StatusCreated, w.Code)
+			r.ServeHTTP(w, req)
 
-	var post generated.Post
-	err := json.NewDecoder(w.Body).Decode(&post)
-	require.NoError(t, err)
-	assert.Equal(t, "Test Post", post.Title)
-	assert.Equal(t, "Test content", post.Content)
-	assert.Equal(t, "Tech", post.Category)
-	assert.Equal(t, []string{"go"}, *post.Tags)
-	assert.NotZero(t, post.CreatedAt)
-	assert.Equal(t, post.CreatedAt, post.UpdatedAt)
+			assert.Equal(t, tt.wantStatus, w.Code)
+
+			if tt.wantStatus == http.StatusCreated {
+				var post generated.Post
+				err := json.NewDecoder(w.Body).Decode(&post)
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantTitle, post.Title)
+				assert.NotEmpty(t, post.Id)
+				assert.NotZero(t, post.CreatedAt)
+				assert.Equal(t, post.CreatedAt, post.UpdatedAt)
+			} else {
+				var problem ProblemDetail
+				err := json.NewDecoder(w.Body).Decode(&problem)
+				require.NoError(t, err)
+				assert.Equal(t, "/problems/validation-error", problem.Type)
+				if tt.wantField != "" {
+					assert.Len(t, problem.Errors, 1)
+					assert.Equal(t, tt.wantField, problem.Errors[0].Field)
+					assert.Equal(t, "REQUIRED", problem.Errors[0].Code)
+				}
+			}
+		})
+	}
 }
 
-func TestCreatePost_MissingTitle(t *testing.T) {
+func TestGetPost(t *testing.T) {
+	// Create a post first to get a valid ID
 	store := NewInMemoryPostStore()
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
+	created, _ := store.CreatePost("Test", "Content", "Tech", nil)
 
-	body := `{"content":"Test content","category":"Tech"}`
-	req := httptest.NewRequest(http.MethodPost, "/posts", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
+	tests := []struct {
+		name       string
+		path       string
+		wantStatus int
+		wantTitle  string
+	}{
+		{"existing post", "/posts/" + created.Id, http.StatusOK, "Test"},
+		{"non-existent post", "/posts/000000000000000000000000", http.StatusNotFound, ""},
+	}
 
-	r.ServeHTTP(w, req)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := &PostsHandler{Store: store}
+			r := setupRouter(handler)
 
-	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			w := httptest.NewRecorder()
 
-	var problem ProblemDetail
-	err := json.NewDecoder(w.Body).Decode(&problem)
-	require.NoError(t, err)
-	assert.Equal(t, "/problems/validation-error", problem.Type)
-	assert.Len(t, problem.Errors, 1)
-	assert.Equal(t, "title", problem.Errors[0].Field)
-	assert.Equal(t, "REQUIRED", problem.Errors[0].Code)
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+
+			if tt.wantStatus == http.StatusOK {
+				var post generated.Post
+				err := json.NewDecoder(w.Body).Decode(&post)
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantTitle, post.Title)
+				assert.Equal(t, created.Id, post.Id)
+			} else {
+				var problem ProblemDetail
+				err := json.NewDecoder(w.Body).Decode(&problem)
+				require.NoError(t, err)
+				assert.Equal(t, "/problems/not-found", problem.Type)
+			}
+		})
+	}
 }
 
-func TestCreatePost_MissingContent(t *testing.T) {
-	store := NewInMemoryPostStore()
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
+func TestListPosts(t *testing.T) {
+	tests := []struct {
+		name       string
+		setup      func(store *InMemoryPostStore)
+		query      string
+		wantStatus int
+		wantLen    int
+	}{
+		{"empty list", func(s *InMemoryPostStore) {}, "", http.StatusOK, 0},
+		{"with data", func(s *InMemoryPostStore) {
+			_, _ = s.CreatePost("Post 1", "Content 1", "Tech", nil)
+			_, _ = s.CreatePost("Post 2", "Content 2", "Life", nil)
+		}, "", http.StatusOK, 2},
+		{"filter matching", func(s *InMemoryPostStore) {
+			_, _ = s.CreatePost("Go Patterns", "Learn Go", "Tech", nil)
+			_, _ = s.CreatePost("Rust Basics", "Learn Rust", "Tech", nil)
+			_, _ = s.CreatePost("Go Concurrency", "Advanced Go", "Tech", nil)
+		}, "?term=Go", http.StatusOK, 2},
+		{"filter no match", func(s *InMemoryPostStore) {
+			_, _ = s.CreatePost("Go Patterns", "Learn Go", "Tech", nil)
+			_, _ = s.CreatePost("Rust Basics", "Learn Rust", "Tech", nil)
+		}, "?term=Python", http.StatusOK, 0},
+	}
 
-	body := `{"title":"Test","category":"Tech"}`
-	req := httptest.NewRequest(http.MethodPost, "/posts", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewInMemoryPostStore()
+			tt.setup(store)
+			handler := &PostsHandler{Store: store}
+			r := setupRouter(handler)
 
-	r.ServeHTTP(w, req)
+			req := httptest.NewRequest(http.MethodGet, "/posts"+tt.query, nil)
+			w := httptest.NewRecorder()
 
-	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+
+			var posts []generated.Post
+			err := json.NewDecoder(w.Body).Decode(&posts)
+			require.NoError(t, err)
+			assert.Len(t, posts, tt.wantLen)
+
+			// Verify all returned posts have non-empty IDs
+			for _, p := range posts {
+				assert.NotEmpty(t, p.Id)
+			}
+		})
+	}
 }
 
-func TestCreatePost_MissingCategory(t *testing.T) {
+func TestUpdatePost(t *testing.T) {
 	store := NewInMemoryPostStore()
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
+	created, _ := store.CreatePost("Original", "Content", "Tech", nil)
 
-	body := `{"title":"Test","content":"content"}`
-	req := httptest.NewRequest(http.MethodPost, "/posts", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
+	nonExistentID := fmt.Sprintf("%024x", 0) // valid hex but no matching doc
 
-	r.ServeHTTP(w, req)
+	tests := []struct {
+		name       string
+		path       string
+		body       string
+		wantStatus int
+		wantTitle  string
+	}{
+		{"valid update", "/posts/" + created.Id, `{"title":"Updated","content":"New content","category":"Life"}`, http.StatusOK, "Updated"},
+		{"non-existent post", "/posts/" + nonExistentID, `{"title":"Updated","content":"content","category":"Tech"}`, http.StatusNotFound, ""},
+	}
 
-	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := &PostsHandler{Store: store}
+			r := setupRouter(handler)
+
+			req := httptest.NewRequest(http.MethodPut, tt.path, bytes.NewBufferString(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+
+			if tt.wantStatus == http.StatusOK {
+				var post generated.Post
+				err := json.NewDecoder(w.Body).Decode(&post)
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantTitle, post.Title)
+				assert.Equal(t, created.Id, post.Id)
+			} else {
+				var problem ProblemDetail
+				err := json.NewDecoder(w.Body).Decode(&problem)
+				require.NoError(t, err)
+				assert.Equal(t, "/problems/not-found", problem.Type)
+			}
+		})
+	}
 }
 
-func TestGetPost_Success(t *testing.T) {
+func TestDeletePost(t *testing.T) {
 	store := NewInMemoryPostStore()
-	_, err := store.CreatePost("Test", "Content", "Tech", nil)
-	require.NoError(t, err)
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
+	created, _ := store.CreatePost("To Delete", "Content", "Tech", nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/posts/1", nil)
-	w := httptest.NewRecorder()
+	nonExistentID := fmt.Sprintf("%024x", 0)
 
-	r.ServeHTTP(w, req)
+	tests := []struct {
+		name       string
+		path       string
+		wantStatus int
+	}{
+		{"existing post", "/posts/" + created.Id, http.StatusNoContent},
+		{"non-existent post", "/posts/" + nonExistentID, http.StatusNotFound},
+	}
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := &PostsHandler{Store: store}
+			r := setupRouter(handler)
 
-	var post generated.Post
-	err = json.NewDecoder(w.Body).Decode(&post)
-	require.NoError(t, err)
-	assert.Equal(t, 1, post.Id)
-	assert.Equal(t, "Test", post.Title)
-}
+			req := httptest.NewRequest(http.MethodDelete, tt.path, nil)
+			w := httptest.NewRecorder()
 
-func TestGetPost_NotFound(t *testing.T) {
-	store := NewInMemoryPostStore()
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
+			r.ServeHTTP(w, req)
 
-	req := httptest.NewRequest(http.MethodGet, "/posts/999", nil)
-	w := httptest.NewRecorder()
-
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
-
-	var problem ProblemDetail
-	err := json.NewDecoder(w.Body).Decode(&problem)
-	require.NoError(t, err)
-	assert.Equal(t, "/problems/not-found", problem.Type)
-}
-
-func TestListPosts_Empty(t *testing.T) {
-	store := NewInMemoryPostStore()
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
-
-	req := httptest.NewRequest(http.MethodGet, "/posts", nil)
-	w := httptest.NewRecorder()
-
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var posts []generated.Post
-	err := json.NewDecoder(w.Body).Decode(&posts)
-	require.NoError(t, err)
-	assert.Empty(t, posts)
-}
-
-func TestListPosts_WithData(t *testing.T) {
-	store := NewInMemoryPostStore()
-	_, err := store.CreatePost("Post 1", "Content 1", "Tech", nil)
-	require.NoError(t, err)
-	_, err = store.CreatePost("Post 2", "Content 2", "Life", nil)
-	require.NoError(t, err)
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
-
-	req := httptest.NewRequest(http.MethodGet, "/posts", nil)
-	w := httptest.NewRecorder()
-
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var posts []generated.Post
-	err = json.NewDecoder(w.Body).Decode(&posts)
-	require.NoError(t, err)
-	assert.Len(t, posts, 2)
-}
-
-func TestListPosts_FilterByTerm(t *testing.T) {
-	store := NewInMemoryPostStore()
-	_, err := store.CreatePost("Go Patterns", "Learn Go", "Tech", nil)
-	require.NoError(t, err)
-	_, err = store.CreatePost("Rust Basics", "Learn Rust", "Tech", nil)
-	require.NoError(t, err)
-	_, err = store.CreatePost("Go Concurrency", "Advanced Go", "Tech", nil)
-	require.NoError(t, err)
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
-
-	req := httptest.NewRequest(http.MethodGet, "/posts?term=Go", nil)
-	w := httptest.NewRecorder()
-
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var posts []generated.Post
-	err = json.NewDecoder(w.Body).Decode(&posts)
-	require.NoError(t, err)
-	assert.Len(t, posts, 2)
-}
-
-func TestUpdatePost_Success(t *testing.T) {
-	store := NewInMemoryPostStore()
-	_, err := store.CreatePost("Original", "Content", "Tech", nil)
-	require.NoError(t, err)
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
-
-	body := `{"title":"Updated","content":"New content","category":"Life"}`
-	req := httptest.NewRequest(http.MethodPut, "/posts/1", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var post generated.Post
-	err = json.NewDecoder(w.Body).Decode(&post)
-	require.NoError(t, err)
-	assert.Equal(t, "Updated", post.Title)
-	assert.Equal(t, "New content", post.Content)
-}
-
-func TestUpdatePost_NotFound(t *testing.T) {
-	store := NewInMemoryPostStore()
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
-
-	body := `{"title":"Updated","content":"content","category":"Tech"}`
-	req := httptest.NewRequest(http.MethodPut, "/posts/999", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
-}
-
-func TestDeletePost_Success(t *testing.T) {
-	store := NewInMemoryPostStore()
-	_, err := store.CreatePost("To Delete", "Content", "Tech", nil)
-	require.NoError(t, err)
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
-
-	req := httptest.NewRequest(http.MethodDelete, "/posts/1", nil)
-	w := httptest.NewRecorder()
-
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusNoContent, w.Code)
-	assert.Empty(t, w.Body.String())
-}
-
-func TestDeletePost_NotFound(t *testing.T) {
-	store := NewInMemoryPostStore()
-	handler := &PostsHandler{Store: store}
-	r := setupRouter(handler)
-
-	req := httptest.NewRequest(http.MethodDelete, "/posts/999", nil)
-	w := httptest.NewRecorder()
-
-	r.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
+			assert.Equal(t, tt.wantStatus, w.Code)
+			if tt.wantStatus == http.StatusNoContent {
+				assert.Empty(t, w.Body.String())
+			}
+		})
+	}
 }

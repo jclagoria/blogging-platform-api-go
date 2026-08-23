@@ -147,7 +147,7 @@ components:
       required: true
       description: Post identifier
       schema:
-        type: integer
+        type: string
 
   schemas:
     HealthResponse:
@@ -170,7 +170,7 @@ components:
         - updatedAt
       properties:
         id:
-          type: integer
+          type: string
         title:
           type: string
         content:

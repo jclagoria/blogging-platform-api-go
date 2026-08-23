@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,13 +14,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// 24-char zero hex string — valid ObjectID format but no matching document
+var nonExistentID = fmt.Sprintf("%024x", 0)
+
 func TestErrorFormat_NotFound(t *testing.T) {
 	store := NewInMemoryPostStore()
 	handler := &PostsHandler{Store: store}
 	r := chi.NewRouter()
 	generated.HandlerFromMux(handler, r)
 
-	req := httptest.NewRequest(http.MethodGet, "/posts/999", nil)
+	req := httptest.NewRequest(http.MethodGet, "/posts/"+nonExistentID, nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -77,7 +81,7 @@ func TestErrorFormat_UpdateNotFound(t *testing.T) {
 	generated.HandlerFromMux(handler, r)
 
 	body := `{"title":"T","content":"C","category":"Cat"}`
-	req := httptest.NewRequest(http.MethodPut, "/posts/999", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPut, "/posts/"+nonExistentID, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -97,7 +101,7 @@ func TestErrorFormat_DeleteNotFound(t *testing.T) {
 	r := chi.NewRouter()
 	generated.HandlerFromMux(handler, r)
 
-	req := httptest.NewRequest(http.MethodDelete, "/posts/999", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/posts/"+nonExistentID, nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 

@@ -49,47 +49,69 @@ func (s *MongoPostStore) col() *mongo.Collection {
 	return s.client.Database(s.database).Collection(s.collection)
 }
 
+// postDoc is the BSON representation stored in MongoDB.
+type postDoc struct {
+	ID        bson.ObjectID `bson:"_id"`
+	Title     string        `bson:"title"`
+	Content   string        `bson:"content"`
+	Category  string        `bson:"category"`
+	Tags      []string      `bson:"tags,omitempty"`
+	CreatedAt time.Time     `bson:"createdAt"`
+	UpdatedAt time.Time     `bson:"updatedAt"`
+}
+
+func (d *postDoc) toPost() *generated.Post {
+	var tags *[]string
+	if len(d.Tags) > 0 {
+		tags = &d.Tags
+	}
+	return &generated.Post{
+		Id:        d.ID.Hex(),
+		Title:     d.Title,
+		Content:   d.Content,
+		Category:  d.Category,
+		Tags:      tags,
+		CreatedAt: d.CreatedAt,
+		UpdatedAt: d.UpdatedAt,
+	}
+}
+
 func (s *MongoPostStore) CreatePost(title, content, category string, tags []string) (*generated.Post, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	now := time.Now().UTC()
-	doc := bson.M{
-		"title":     title,
-		"content":   content,
-		"category":  category,
-		"tags":      tags,
-		"createdAt": now,
-		"updatedAt": now,
-	}
-
-	res, err := s.col().InsertOne(ctx, doc)
-	if err != nil {
-		return nil, fmt.Errorf("insert post: %w", err)
-	}
-
-	post := &generated.Post{
-		Id:        int(res.InsertedID.(bson.ObjectID).Timestamp().Unix()),
+	doc := postDoc{
+		ID:        bson.NewObjectID(),
 		Title:     title,
 		Content:   content,
 		Category:  category,
-		Tags:      &tags,
+		Tags:      tags,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 
-	return post, nil
+	if _, err := s.col().InsertOne(ctx, doc); err != nil {
+		return nil, fmt.Errorf("insert post: %w", err)
+	}
+
+	return doc.toPost(), nil
 }
 
-func (s *MongoPostStore) GetPost(id int) (*generated.Post, error) {
+func (s *MongoPostStore) GetPost(id string) (*generated.Post, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var post generated.Post
-	if err := s.col().FindOne(ctx, bson.M{"_id": id}).Decode(&post); err != nil {
-		return nil, fmt.Errorf("post %d not found", id)
+	oid, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid post id: %s", id)
 	}
-	return &post, nil
+
+	var doc postDoc
+	if err := s.col().FindOne(ctx, bson.M{"_id": oid}).Decode(&doc); err != nil {
+		return nil, fmt.Errorf("post %s not found", id)
+	}
+	return doc.toPost(), nil
 }
 
 func (s *MongoPostStore) ListPosts(term string) ([]generated.Post, error) {
@@ -114,16 +136,26 @@ func (s *MongoPostStore) ListPosts(term string) ([]generated.Post, error) {
 	}
 	defer func() { _ = cursor.Close(ctx) }()
 
-	var posts []generated.Post
-	if err := cursor.All(ctx, &posts); err != nil {
+	var docs []postDoc
+	if err := cursor.All(ctx, &docs); err != nil {
 		return nil, fmt.Errorf("decode posts: %w", err)
+	}
+
+	posts := make([]generated.Post, len(docs))
+	for i, doc := range docs {
+		posts[i] = *doc.toPost()
 	}
 	return posts, nil
 }
 
-func (s *MongoPostStore) UpdatePost(id int, title, content, category string, tags []string) (*generated.Post, error) {
+func (s *MongoPostStore) UpdatePost(id string, title, content, category string, tags []string) (*generated.Post, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	oid, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid post id: %s", id)
+	}
 
 	update := bson.M{
 		"$set": bson.M{
@@ -135,27 +167,32 @@ func (s *MongoPostStore) UpdatePost(id int, title, content, category string, tag
 		},
 	}
 
-	res, err := s.col().UpdateOne(ctx, bson.M{"_id": id}, update)
+	res, err := s.col().UpdateOne(ctx, bson.M{"_id": oid}, update)
 	if err != nil {
 		return nil, fmt.Errorf("update post: %w", err)
 	}
 	if res.MatchedCount == 0 {
-		return nil, fmt.Errorf("post %d not found", id)
+		return nil, fmt.Errorf("post %s not found", id)
 	}
 
 	return s.GetPost(id)
 }
 
-func (s *MongoPostStore) DeletePost(id int) error {
+func (s *MongoPostStore) DeletePost(id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	res, err := s.col().DeleteOne(ctx, bson.M{"_id": id})
+	oid, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return fmt.Errorf("invalid post id: %s", id)
+	}
+
+	res, err := s.col().DeleteOne(ctx, bson.M{"_id": oid})
 	if err != nil {
 		return fmt.Errorf("delete post: %w", err)
 	}
 	if res.DeletedCount == 0 {
-		return fmt.Errorf("post %d not found", id)
+		return fmt.Errorf("post %s not found", id)
 	}
 	return nil
 }

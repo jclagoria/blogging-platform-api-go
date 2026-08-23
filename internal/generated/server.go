@@ -61,7 +61,7 @@ type Post struct {
 	Category  string    `json:"category"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"createdAt"`
-	Id        int       `json:"id"`
+	Id        string    `json:"id"`
 	Tags      *[]string `json:"tags,omitempty"`
 	Title     string    `json:"title"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -109,7 +109,7 @@ type ValidationErrorDetail struct {
 type ValidationErrorDetailCode string
 
 // PostId defines model for PostId.
-type PostId = int
+type PostId = string
 
 // InternalError defines model for InternalError.
 type InternalError = ProblemDetails
@@ -273,7 +273,7 @@ func (siw *ServerInterfaceWrapper) DeletePost(w http.ResponseWriter, r *http.Req
 	// ------------- Path parameter "id" -------------
 	var id PostId
 
-	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
 		return
@@ -299,7 +299,7 @@ func (siw *ServerInterfaceWrapper) GetPost(w http.ResponseWriter, r *http.Reques
 	// ------------- Path parameter "id" -------------
 	var id PostId
 
-	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
 		return
@@ -325,7 +325,7 @@ func (siw *ServerInterfaceWrapper) UpdatePost(w http.ResponseWriter, r *http.Req
 	// ------------- Path parameter "id" -------------
 	var id PostId
 
-	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
 		return
