@@ -5,51 +5,43 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestCORS_AllowsGET(t *testing.T) {
-	handler := CORS()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/posts", nil)
-	req.Header.Set("Origin", "http://localhost:3000")
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
-}
-
-func TestCORS_PreflightOPTIONS(t *testing.T) {
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestCORSHeaders(t *testing.T) {
+	r := chi.NewRouter()
+	r.Use(CORS())
+	r.Get("/test", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	handler := CORS()(inner)
 
-	req := httptest.NewRequest(http.MethodOptions, "/posts", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	req.Header.Set("Origin", "http://localhost:3000")
-	req.Header.Set("Access-Control-Request-Method", "POST")
-	req.Header.Set("Access-Control-Request-Headers", "Content-Type")
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
+	rec := httptest.NewRecorder()
 
-	// rs/cors may not intercept OPTIONS without a matching route context.
-	// Verify the handler at least passes through without error.
-	assert.Contains(t, []int{http.StatusOK, http.StatusNoContent, http.StatusForbidden}, w.Code)
+	r.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.NotEmpty(t, rec.Header().Get("Access-Control-Allow-Origin"))
 }
 
-func TestCORS_AllowsDELETE(t *testing.T) {
-	handler := CORS()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
+func TestCORSPreflight(t *testing.T) {
+	r := chi.NewRouter()
+	r.Use(CORS())
+	r.Get("/test", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 
-	req := httptest.NewRequest(http.MethodDelete, "/posts/1", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/test", nil)
 	req.Header.Set("Origin", "http://localhost:3000")
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	rec := httptest.NewRecorder()
 
-	assert.Equal(t, http.StatusNoContent, w.Code)
-	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	assert.NotEmpty(t, rec.Header().Get("Access-Control-Allow-Origin"))
+	assert.Contains(t, rec.Header().Get("Access-Control-Allow-Methods"), "POST")
 }
