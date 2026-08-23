@@ -49,6 +49,9 @@ func main() {
 	apiDocs, _ := fs.Sub(docs.StaticFiles, "api")
 	r.Handle("/docs/*", http.StripPrefix("/docs/", http.FileServer(http.FS(apiDocs))))
 
+	redocDocs, _ := fs.Sub(docs.StaticFiles, "api/redoc")
+	r.Handle("/redoc/*", http.StripPrefix("/redoc/", http.FileServer(http.FS(redocDocs))))
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -65,7 +68,7 @@ func main() {
 	go func() {
 		log.Printf("Starting server on :%s", port)
 		log.Printf("Swagger UI: http://localhost:%s/docs/swagger-ui/", port)
-		log.Printf("Redoc:      http://localhost:%s/docs/redoc/", port)
+		log.Printf("Redoc:      http://localhost:%s/redoc/", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
