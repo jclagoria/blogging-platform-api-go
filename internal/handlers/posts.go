@@ -8,6 +8,11 @@ import (
 	"github.com/juanka/blogging-platform-api/internal/generated"
 )
 
+const (
+	contentTypeJSON      = "application/json"
+	errPostNotFound      = "The requested post was not found"
+)
+
 // PostsHandler implements the ServerInterface for posts endpoints.
 type PostsHandler struct {
 	Store PostStore
@@ -52,7 +57,7 @@ func (h *PostsHandler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(post)
 }
@@ -70,7 +75,7 @@ func (h *PostsHandler) ListPosts(w http.ResponseWriter, r *http.Request, params 
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(posts)
 }
@@ -79,11 +84,11 @@ func (h *PostsHandler) ListPosts(w http.ResponseWriter, r *http.Request, params 
 func (h *PostsHandler) GetPost(w http.ResponseWriter, r *http.Request, id generated.PostId) {
 	post, err := h.Store.GetPost(id)
 	if err != nil {
-		writeNotFound(w, "The requested post was not found")
+		writeNotFound(w, errPostNotFound)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(post)
 }
@@ -118,11 +123,11 @@ func (h *PostsHandler) UpdatePost(w http.ResponseWriter, r *http.Request, id gen
 
 	post, err := h.Store.UpdatePost(id, req.Title, req.Content, req.Category, tags)
 	if err != nil {
-		writeNotFound(w, "The requested post was not found")
+		writeNotFound(w, errPostNotFound)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(post)
 }
@@ -131,7 +136,7 @@ func (h *PostsHandler) UpdatePost(w http.ResponseWriter, r *http.Request, id gen
 func (h *PostsHandler) DeletePost(w http.ResponseWriter, r *http.Request, id generated.PostId) {
 	err := h.Store.DeletePost(id)
 	if err != nil {
-		writeNotFound(w, "The requested post was not found")
+		writeNotFound(w, errPostNotFound)
 		return
 	}
 

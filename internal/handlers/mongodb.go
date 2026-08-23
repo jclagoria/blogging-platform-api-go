@@ -12,6 +12,11 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+const (
+	mongoRegex   = "$regex"
+	mongoOptions = "$options"
+)
+
 // MongoPostStore is a PostStore backed by MongoDB.
 type MongoPostStore struct {
 	client     *mongo.Client
@@ -123,9 +128,9 @@ func (s *MongoPostStore) ListPosts(term string) ([]generated.Post, error) {
 		t := strings.ToLower(term)
 		filter = bson.M{
 			"$or": []bson.M{
-				{"title": bson.M{"$regex": t, "$options": "i"}},
-				{"content": bson.M{"$regex": t, "$options": "i"}},
-				{"category": bson.M{"$regex": t, "$options": "i"}},
+				{"title": bson.M{mongoRegex: t, mongoOptions: "i"}},
+				{"content": bson.M{mongoRegex: t, mongoOptions: "i"}},
+				{"category": bson.M{mongoRegex: t, mongoOptions: "i"}},
 			},
 		}
 	}
