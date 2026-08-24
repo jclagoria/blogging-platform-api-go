@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	contentTypeJSON      = "application/json"
-	errPostNotFound      = "The requested post was not found"
+	headerContentType = "Content-Type"
+	contentTypeJSON   = "application/json"
+	errPostNotFound   = "The requested post was not found"
 )
 
 // PostsHandler implements the ServerInterface for posts endpoints.
@@ -57,7 +58,7 @@ func (h *PostsHandler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", contentTypeJSON)
+	w.Header().Set(headerContentType, contentTypeJSON)
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(post)
 }
@@ -75,7 +76,7 @@ func (h *PostsHandler) ListPosts(w http.ResponseWriter, r *http.Request, params 
 		return
 	}
 
-	w.Header().Set("Content-Type", contentTypeJSON)
+	w.Header().Set(headerContentType, contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(posts)
 }
@@ -88,7 +89,7 @@ func (h *PostsHandler) GetPost(w http.ResponseWriter, r *http.Request, id genera
 		return
 	}
 
-	w.Header().Set("Content-Type", contentTypeJSON)
+	w.Header().Set(headerContentType, contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(post)
 }
@@ -127,7 +128,7 @@ func (h *PostsHandler) UpdatePost(w http.ResponseWriter, r *http.Request, id gen
 		return
 	}
 
-	w.Header().Set("Content-Type", contentTypeJSON)
+	w.Header().Set(headerContentType, contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(post)
 }
