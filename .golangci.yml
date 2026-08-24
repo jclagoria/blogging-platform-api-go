@@ -1,7 +1,7 @@
 version: "2"
 
 issues:
-  exclude:
+  exclude-rules:
     - path: internal/generated/
       linters:
         - errcheck
