@@ -1,10 +1,9 @@
 version: "2"
 
-issues:
-  exclude-rules:
-    - path: internal/generated/
-      linters:
-        - errcheck
-        - govet
-        - staticcheck
-        - unused
+exclude-rules:
+  - path: internal/generated/
+    linters:
+      - errcheck
+      - govet
+      - staticcheck
+      - unused
