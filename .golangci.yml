@@ -1,9 +1,5 @@
 version: "2"
 
-exclude-rules:
-  - path: internal/generated/
-    linters:
-      - errcheck
-      - govet
-      - staticcheck
-      - unused
+linters:
+  exclusions:
+    generated: strict
